@@ -2,12 +2,9 @@
 """
 
 import argparse
-import functools
 import logging
-import operator
 import os
 import pickle
-import random
 
 from datetime import datetime
 
@@ -15,7 +12,6 @@ import comet_ml
 import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
-import tqdm
 import yaml
 
 import models
@@ -88,16 +84,6 @@ def main():
 
     parser.add_argument('--model_config', help='model config file', default='config/default.yaml', type=str)
     parser.add_argument('--load_checkpoint', help='load weights from checkpoint file', default=None, type=str)
-
-    parser.add_argument('--meta_algo', help='use the specified meta learning algorithm',
-                        choices=[None, 'reptile', 'maml'], default=None, type=str)
-    parser.add_argument('--meta_steps', help='number of meta learning steps to perform', default=10, type=int)
-    parser.add_argument('--mini_batches_per_meta_step', help='number of mini-batches per meta learning step',
-                        default=4, type=int)
-    parser.add_argument('--meta_step_size', help='meta learning step size or range (start, stop)', default=[0.1],
-                        type=float, nargs='*')
-    parser.add_argument('--meta_steps_per_save', help='number of meta learning steps between saves', default=10,
-                        type=int)
 
     parser.add_argument('--train', help='training dataset', default=['default.h5'], type=str, nargs='*')
     parser.add_argument('--test', help='testing dataset', default='default.h5', type=str)
@@ -186,78 +172,20 @@ def main():
         })
 
     # Training.
-    if args.meta_algo is None:
-        result = model.fit(
-            x=datasets[0],
-            shuffle=False,
-            epochs=args.epochs,
-            callbacks=[
-                tf.keras.callbacks.ModelCheckpoint(
-                    filepath=f'{output_dir}/weights_epoch_{{epoch}}.h5',
-                    save_weights_only=True,
-                    save_freq='epoch',
-                    save_best_only=False
-                )
-            ],
-        )
-        history = result.history
-
-    elif args.meta_algo == 'reptile':
-        history = {
-            'dataset': []
-        }
-
-        if len(args.meta_step_size) == 1:
-            meta_step_size_initial = args.meta_step_size[0]
-            meta_step_size_final = args.meta_step_size[0]
-        else:
-            meta_step_size_initial = args.meta_step_size[0]
-            meta_step_size_final = args.meta_step_size[1]
-
-        progress = tqdm.trange(args.meta_steps)
-        for i in progress:
-            fraction_done = i / args.meta_steps
-            current_meta_step_size = fraction_done * meta_step_size_final + (1 - fraction_done) * meta_step_size_initial
-
-            index = random.randrange(len(datasets))
-            gradients = []
-            old_weights = np.array(model.get_weights())
-            for _ in range(args.mini_batches_per_meta_step):
-                result = model.fit(
-                    x=datasets[index],
-                    shuffle=False,
-                    epochs=1,
-                    steps_per_epoch=1,
-                    verbose=0
-                )
-                new_weights = np.array(model.get_weights())
-                gradients.append(old_weights - new_weights)
-                model.set_weights(old_weights)
-
-                for key, value in result.history.items():
-                    if key in history:
-                        history[key] += value
-                    else:
-                        history[key] = value
-
-                history['dataset'] += [index] * args.mini_batches_per_meta_step
-
-                loss = result.history['loss'][0]
-                progress.set_description(f'Loss: {loss:.4g}', True)
-
-            gradient = functools.reduce(operator.add, gradients)
-            new_weights = old_weights - current_meta_step_size * gradient
-            model.set_weights(new_weights)
-
-            if (i + 1) % args.meta_steps_per_save == 0:
-                model.save_weights(f'{output_dir}/weights_meta_step_{i + 1}.h5')
-                model.save_weights('output/meta_weights_latest.h5')
-
-    elif args.meta_algo == 'maml':
-        raise NotImplementedError('MAML meta learning algorithm has not been implemented!')
-
-    else:
-        raise ValueError(f'{args.meta_algo} is not a valid meta learning algorithm.')
+    result = model.fit(
+        x=datasets[0],
+        shuffle=False,
+        epochs=args.epochs,
+        callbacks=[
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=f'{output_dir}/weights_epoch_{{epoch}}.h5',
+                save_weights_only=True,
+                save_freq='epoch',
+                save_best_only=False
+            )
+        ],
+    )
+    history = result.history
 
     # Save arguments.
     path = f'{output_dir}/arguments.pkl'
