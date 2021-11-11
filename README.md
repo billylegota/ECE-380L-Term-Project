@@ -14,5 +14,3 @@ tested do not provide any benefits over (and in fact underperform relative to) c
 retraining from the most severe multipath channel model. This result is promising as it 
 indicates that the complexity both in implementation and computational resources of 
 meta-learning can be avoided without any degradation of performance.
-
-[//]: # (TODO: Figure out license information. We might need to remove `qam_decode.py`.)
