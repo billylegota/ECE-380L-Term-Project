@@ -13,4 +13,3 @@ Pass `--comet <project name> <experiment name>` to `train.py`.
    2. Project directory (i.e, same as this file)
 4. Now when you run `train.py` as above, comet will read your API key and tie
    the experiment to you automatically.
-
