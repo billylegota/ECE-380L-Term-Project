@@ -8,7 +8,6 @@ import pickle
 
 from datetime import datetime
 
-import comet_ml
 import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
@@ -93,7 +92,6 @@ def main():
     parser.add_argument('--loss_function', help='loss function', default='mean_squared_error', type=str)
     parser.add_argument('--learning_rate', help='learning rate', default=0.00001, type=float)
     parser.add_argument('--cpu', help='CPU only operation (disable GPU)', action='store_true')
-    parser.add_argument('--comet', help='enable Comet ML using given experiment name', default=None, type=str, nargs=2)
     args = parser.parse_args()
 
     # Disable info messages from TensorFlow.
@@ -142,34 +140,6 @@ def main():
     datasets = [
         load_dataset(path, tone_start, tone_end, args.batch_size, args.shuffle_buffer_size) for path in args.train
     ]
-
-    # Comet ML setup.
-    if args.comet:
-        experiment = comet_ml.Experiment(workspace='wblount', project_name=args.comet[0])
-        experiment.set_name(args.comet[1])
-        experiment.set_os_packages()
-        experiment.set_pip_packages()
-
-        os.environ['COMET_GIT_DIRECTORY'] = os.path.abspath(os.path.dirname(__file__))
-
-        experiment.log_parameters({
-            'model': model_config['model']['name'],
-            'batch_size': args.batch_size,
-            'epochs': args.epochs,
-            'loss_function': args.loss_function,
-            'learning_rate': args.learning_rate,
-            'model_parameters': model_config['model']['parameters']
-        })
-
-        experiment.log_others({
-            'seed': args.seed,
-            'mcs': args.mcs,
-            'num_pred_tones': num_pred_tones,
-            'tone_cluster': args.tone_cluster,
-            'cpu': args.cpu,
-            'training_dataset': args.train,
-            'test_dataset': args.test
-        })
 
     # Training.
     result = model.fit(
