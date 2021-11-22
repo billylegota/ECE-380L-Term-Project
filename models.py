@@ -227,9 +227,44 @@ class ConvolutionalModel(Model):
         return tf.keras.layers.multiply([rx_data, correction])
 
 
+# noinspection DuplicatedCode
+class TopologicallyInspiredConvolutionalModel(Model):
+    def __init__(self, filters: int, kernel_size: int, layers: int, units: int, num_pred_tones: int, **_):
+        super().__init__(num_pred_tones)
+        self._filters = filters
+        self._kernel_size = kernel_size
+        self._layers = layers
+        self._units = units
+        self._num_pred_tones = num_pred_tones
+
+    def _output(self, rx_l_ltf_1: Input, rx_l_ltf_2: Input, rx_he_ltf_data: Input, rx_he_ltf_pilot: Input,
+                rx_data: Input, rx_pilot: Input, tx_pilot: Input) -> tf.keras.layers.Layer:
+        inputs = [
+            rx_l_ltf_1,         # TODO: Figure out what to divide this by.
+            rx_l_ltf_2,         # TODO: Figure out what to divide this by.
+            rx_he_ltf_pilot,    # TODO: Figure out what to divide this by.
+            tf.keras.layers.Lambda(lambda x: x[0] / x[1])([rx_pilot, tx_pilot])
+        ]
+
+        n = tf.concat(values=[f(x) for f in [tf.math.real, tf.math.imag] for x in inputs], axis=-1)
+        n = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(n)
+        n = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(n)
+        n = tf.keras.layers.Flatten()(n)
+        for i in range(self._layers):
+            n = tf.keras.layers.Dense(units=self._units, activation='tanh')(n)
+
+        real = tf.keras.layers.Dense(self._num_pred_tones)(n)
+        imag = tf.keras.layers.Dense(self._num_pred_tones)(n)
+
+        correction = tf.keras.layers.Lambda(lambda x: tf.complex(x[0], x[1]))([real, imag])
+
+        return tf.keras.layers.multiply([rx_data, correction])
+
+
 MODELS = {
     'DenseModel': DenseModel,
     'DenseParallelModel': DenseParallelModel,
     'DenseParallelModelSlim': DenseParallelModelSlim,
-    'ConvolutionalModel': ConvolutionalModel
+    'ConvolutionalModel': ConvolutionalModel,
+    'TICModel': TopologicallyInspiredConvolutionalModel
 }
