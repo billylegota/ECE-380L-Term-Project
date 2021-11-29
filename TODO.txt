@@ -1,0 +1,39 @@
+Remaining tasks:
+    - Presentation
+        [ ] Create introduction slides
+        [ ] Create background information slides
+        [ ] Create dataset slides
+        [ ] Create data analysis slides
+        [ ] Create data preprocessing slides
+        [ ] Create feature engineering slides
+        [ ] Create feature extraction slides (PCA)
+        [ ] Create model architecture slides (fully connected and convolutional model)
+        [ ] Create model comparison slides (naive fully connected vs feature engineered/extracted fully connected and
+            convolutional models)
+        [ ] Create conclusion slide
+    - Data preprocessing and analysis
+        [ ] Flatten real-world dataset
+        [ ] Perform feature engineering and extraction on flattened real-world dataset
+        - Generate plots for data analysis slides
+            [ ] Constellation diagrams of RX and TX symbols (corrected and uncorrected)
+            [ ] Magnitude and phase of channel response
+            [ ] PCA of engineered and non-engineered data
+    - Model design
+        [ ] Design fully connected model
+        [ ] Design convolutional model
+    - Model training and hyper-parameter search
+        - Train model on real-world dataset
+            [ ] Fully connected without feature engineering or feature extraction
+            [ ] Fully connected with feature engineering but no feature extraction
+            [ ] Fully connected with feature engineering and feature extraction
+            [ ] Convolutional with feature engineering
+    - Model evaluation
+        [ ] Flatten and process the per-SNR real-world datasets for use in BER curve creation
+        [ ] Update BER curve code to generate curves with the new models
+        - Evaluate models trained on real-world dataset
+            [ ] Fully connected without feature engineering or feature extraction
+            [ ] Fully connected with feature engineering but no feature extraction
+            [ ] Fully connected with feature engineering and feature extraction
+            [ ] Convolutional with feature engineering
+    - Misc
+        [ ] Look into using Optuna for hyper-parameter tuning
