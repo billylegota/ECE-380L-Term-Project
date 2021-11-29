@@ -29,30 +29,30 @@ def load_dataset(path: str, tone_start: int, tone_end: int, batch_size: int,
     """
     num_pred_tones = tone_end - tone_start + 1
 
-    rx_l_ltf_1 = tfio.IODataset.from_hdf5(path, '/rx_l_ltf_1')
-    rx_l_ltf_2 = tfio.IODataset.from_hdf5(path, '/rx_l_ltf_2')
-    rx_he_ltf_data = tfio.IODataset.from_hdf5(path, '/rx_he_ltf_data')
-    rx_he_ltf_pilot = tfio.IODataset.from_hdf5(path, '/rx_he_ltf_pilot')
-    rx_data = tfio.IODataset.from_hdf5(path, '/rx_data')
-    rx_pilot = tfio.IODataset.from_hdf5(path, '/rx_pilot')
-    tx_data = tfio.IODataset.from_hdf5(path, '/tx_data')
-    tx_pilot = tfio.IODataset.from_hdf5(path, '/tx_pilot')
+    l_ltf_1_gain = tfio.IODataset.from_hdf5(path, '/l_ltf_1_gain')
+    l_ltf_2_gain = tfio.IODataset.from_hdf5(path, '/l_ltf_2_gain')
+    he_ltf_gain = tfio.IODataset.from_hdf5(path, '/he_ltf_gain')
+    he_ppdu_pilot_gain = tfio.IODataset.from_hdf5(path, '/he_ppdu_pilot_gain')
+    rx_he_ppdu_data = tfio.IODataset.from_hdf5(path, '/rx_he_ppdu_data')
+    tx_he_ppdu_data = tfio.IODataset.from_hdf5(path, '/tx_he_ppdu_data')
 
     if num_pred_tones != 234:
-        rx_data = rx_data.map(lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        tx_data = tx_data.map(lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        rx_he_ppdu_data = rx_he_ppdu_data.map(
+            lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
+        tx_he_ppdu_data = tx_he_ppdu_data.map(
+            lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE
+        )
 
     inputs = tfio.IODataset.zip((
-        rx_l_ltf_1,
-        rx_l_ltf_2,
-        rx_he_ltf_data,
-        rx_he_ltf_pilot,
-        rx_data,
-        rx_pilot,
-        tx_pilot
+        l_ltf_1_gain,
+        l_ltf_2_gain,
+        he_ltf_gain,
+        he_ppdu_pilot_gain,
+        rx_he_ppdu_data
     ))
 
-    outputs = tx_data
+    outputs = tx_he_ppdu_data
 
     # TODO: https://determined.ai/blog/tf-dataset-the-bad-parts/
     #       https://github.com/determined-ai/yogadl

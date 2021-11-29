@@ -1,9 +1,0 @@
-# Default configuration for DenseParallelModelSlim.
-model:
-  name: 'DenseParallelModelSlim'
-  parameters:
-    layers: 5
-    units: 600
-    activation: 'tanh'
-    dropout: 0
-    num_pred_tones: 18
