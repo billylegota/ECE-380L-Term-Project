@@ -8,65 +8,136 @@ import pickle
 
 from datetime import datetime
 
+import h5py
 import numpy as np
+import scipy.io
 import tensorflow as tf
-import tensorflow_io as tfio
 import yaml
 
+import data_exploration.complex_pca as complex_pca
 import models
 import util
 
 
-def load_dataset(path: str, tone_start: int, tone_end: int, batch_size: int,
-                 shuffle_buffer_size: int) -> tf.data.Dataset:
+# noinspection DuplicatedCode
+def load_dataset(data_path: str, tone_start: int, tone_stop: int, batch_size: int, shuffle_buffer_size: int,
+                 constant_features_path: str = None, use_gain: bool = True, use_pca: bool = False,
+                 use_combined: bool = True, components: int = None) -> tf.data.Dataset:
     """Load a flattened dataset from the specified HDF5 file.
-    :param path: path to the flattened dataset.
+    :param data_path: path to the flattened dataset.
     :param tone_start: start index of tones.
-    :param tone_end: stop index of tones.
+    :param tone_stop: stop index of tones.
     :param batch_size: batch size.
     :param shuffle_buffer_size: shuffle buffer size.
+    :param constant_features_path: path to constant features file.
+    :param use_gain: transform (rx, tx) -> rx / tx.
+    :param use_pca: apply PCA.
+    :param use_combined: combine all inputs (other than the RX HE-PPDU data) into a single tensor.
+    :param components: number of principal components to use.
     :return: dataset with batching and shuffling already applied.
     """
-    num_pred_tones = tone_end - tone_start + 1
+    if constant_features_path is None:
+        constant_features_path = 'data_preprocessing/constant_features.mat'
 
-    l_ltf_1_gain = tfio.IODataset.from_hdf5(path, '/l_ltf_1_gain')
-    l_ltf_2_gain = tfio.IODataset.from_hdf5(path, '/l_ltf_2_gain')
-    he_ltf_gain = tfio.IODataset.from_hdf5(path, '/he_ltf_gain')
-    he_ppdu_pilot_gain = tfio.IODataset.from_hdf5(path, '/he_ppdu_pilot_gain')
-    rx_he_ppdu_data = tfio.IODataset.from_hdf5(path, '/rx_he_ppdu_data')
-    tx_he_ppdu_data = tfio.IODataset.from_hdf5(path, '/tx_he_ppdu_data')
+    # Load dataset and constant features.
+    data = h5py.File(data_path, 'r')
+    constant_features = scipy.io.loadmat(constant_features_path, squeeze_me=True)
+    constant_features = constant_features['constant']
 
-    if num_pred_tones != 234:
-        rx_he_ppdu_data = rx_he_ppdu_data.map(
-            lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE
-        )
-        tx_he_ppdu_data = tx_he_ppdu_data.map(
-            lambda x: x[tone_start:tone_end], num_parallel_calls=tf.data.experimental.AUTOTUNE
-        )
+    # L-LTF extraction.
+    rx_l_ltf_1 = np.array(data['rx_l_ltf_1'])
+    rx_l_ltf_2 = np.array(data['rx_l_ltf_2'])
 
-    inputs = tfio.IODataset.zip((
-        l_ltf_1_gain,
-        l_ltf_2_gain,
-        he_ltf_gain,
-        he_ppdu_pilot_gain,
-        rx_he_ppdu_data
-    ))
+    tx_l_ltf = constant_features['txLltfFftOut'][()]
 
-    outputs = tx_he_ppdu_data
+    rx_l_ltf_1_trimmed = rx_l_ltf_1[:, tx_l_ltf != 0]
+    rx_l_ltf_2_trimmed = rx_l_ltf_2[:, tx_l_ltf != 0]
+    tx_l_ltf_trimmed = tx_l_ltf[tx_l_ltf != 0]
 
-    # TODO: https://determined.ai/blog/tf-dataset-the-bad-parts/
-    #       https://github.com/determined-ai/yogadl
-    # FIXME: This dataset is not shuffled and Keras will not shuffle it. Shuffle in Keras can only shuffle the
-    #        batches given to it, not the elements before they are batched. This means that we will always have the same
-    #        batches (albeit in a different order if we use shuffle=True) which will probably hurt generalization. The
-    #        best solution is probably to have some hybrid random access / sequential access data pipeline that performs
-    #        the shuffling at the random access layer not sequential access layer. That way we can avoid the issues
-    #        related to tf.data.Dataset.shuffle.
-    # TODO: Figure out how big the buffer should be when shuffling for good results.
-    dataset = tfio.IODataset.zip((inputs, outputs)) \
-        .shuffle(buffer_size=shuffle_buffer_size, reshuffle_each_iteration=True) \
-        .batch(batch_size=batch_size, drop_remainder=False) \
-        .prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    l_ltf_1_trimmed_gain = rx_l_ltf_1_trimmed / tx_l_ltf_trimmed
+    l_ltf_2_trimmed_gain = rx_l_ltf_2_trimmed / tx_l_ltf_trimmed
+
+    # HE-LTF extraction.
+    he_ltf_data_indices = constant_features['iMDataTone_Heltf'][()].astype(np.int32) - 1
+    he_ltf_pilot_indices = constant_features['iMPilotTone_Heltf'][()].astype(np.int32) - 1
+    he_ltf_size = 256
+
+    rx_he_ltf_data = np.array(data['rx_he_ltf_data'])
+    rx_he_ltf_pilot = np.array(data['rx_he_ltf_pilot'])
+    rx_he_ltf = np.zeros((rx_he_ltf_data.shape[0], he_ltf_size), dtype=complex)
+    rx_he_ltf[:, he_ltf_data_indices] = rx_he_ltf_data
+    rx_he_ltf[:, he_ltf_pilot_indices] = rx_he_ltf_pilot
+
+    tx_he_ltf = constant_features['txHeltfFftOut'][()]
+
+    rx_he_ltf_trimmed = rx_he_ltf[:, tx_he_ltf != 0]
+    tx_he_ltf_trimmed = tx_he_ltf[tx_he_ltf != 0]
+
+    he_ltf_trimmed_gain = rx_he_ltf_trimmed / tx_he_ltf_trimmed
+
+    # Data and pilot extraction.
+    rx_he_ppdu_pilot = np.array(data['rx_pilot'])
+    tx_he_ppdu_pilot = np.array(data['tx_pilot'])
+    he_ppdu_pilot_gain = rx_he_ppdu_pilot / tx_he_ppdu_pilot
+
+    rx_he_ppdu_data = np.array(data['rx_data'][:, tone_start:tone_stop])
+    tx_he_ppdu_data = np.array(data['tx_data'][:, tone_start:tone_stop])
+
+    # Combine data.
+    if use_combined:
+        if use_gain:
+            X = np.hstack([
+                l_ltf_1_trimmed_gain,
+                l_ltf_2_trimmed_gain,
+                he_ltf_trimmed_gain,
+                he_ppdu_pilot_gain
+            ])
+        else:
+            X = np.hstack([
+                rx_l_ltf_1,
+                rx_l_ltf_2,
+                tx_l_ltf,
+                rx_he_ltf,
+                tx_he_ltf,
+                rx_he_ppdu_pilot,
+                tx_he_ppdu_pilot
+            ])
+
+        if use_pca:
+            components = X.shape[1] if components is None else components
+            pca = complex_pca.ComplexPCA(components)
+            pca.fit(X)
+
+            X = pca.transform(X)
+
+        inputs = tf.data.Dataset.zip((
+            tf.data.Dataset.from_tensor_slices((X,)),
+            tf.data.Dataset.from_tensor_slices((rx_he_ppdu_data,))
+        ))
+    else:
+        if use_gain:
+            inputs = tf.data.Dataset.zip((
+                tf.data.Dataset.from_tensor_slices((l_ltf_1_trimmed_gain,)),
+                tf.data.Dataset.from_tensor_slices((l_ltf_2_trimmed_gain,)),
+                tf.data.Dataset.from_tensor_slices((he_ltf_trimmed_gain,)),
+                tf.data.Dataset.from_tensor_slices((he_ppdu_pilot_gain,))
+            ))
+        else:
+            inputs = tf.data.Dataset.zip((
+                tf.data.Dataset.from_tensor_slices((rx_l_ltf_1,)),
+                tf.data.Dataset.from_tensor_slices((rx_l_ltf_2,)),
+                tf.data.Dataset.from_tensor_slices((tx_l_ltf,)),
+                tf.data.Dataset.from_tensor_slices((rx_he_ltf,)),
+                tf.data.Dataset.from_tensor_slices((tx_he_ltf,)),
+                tf.data.Dataset.from_tensor_slices((rx_he_ppdu_pilot,)),
+                tf.data.Dataset.from_tensor_slices((tx_he_ppdu_pilot,))
+            ))
+
+    outputs = tf.data.Dataset.from_tensor_slices((tx_he_ppdu_data,))
+
+    dataset = tf.data.Dataset.zip((inputs, outputs)) \
+        .shuffle(buffer_size=shuffle_buffer_size) \
+        .batch(batch_size=batch_size)
 
     return dataset
 
@@ -78,20 +149,22 @@ def main():
     parser.add_argument('--seed', help='seed for Numpy RNG', default=42, type=int)
     parser.add_argument('--output_dir', help='output directory', default=None, type=str)
 
-    parser.add_argument('--mcs', help='modulation and coding scheme', choices=[7, 9, 11], default=7, type=int)
-    parser.add_argument('--tone_cluster', help='index of the tone cluster (one indexed)', default=1, type=int)
-
     parser.add_argument('--model_config', help='model config file', default='config/default.yaml', type=str)
     parser.add_argument('--load_checkpoint', help='load weights from checkpoint file', default=None, type=str)
 
-    parser.add_argument('--train', help='training dataset', default=['default.h5'], type=str, nargs='*')
-    parser.add_argument('--test', help='testing dataset', default='default.h5', type=str)
+    parser.add_argument('--train', help='training dataset', default='default.h5', type=str)
+    parser.add_argument('--validate', help='validation dataset', default='default.h5', type=str)
     parser.add_argument('--batch_size', help='batch size', default=1000, type=int)
     parser.add_argument('--shuffle_buffer_size', help='shuffle buffer size', default=10000, type=int)
     parser.add_argument('--epochs', help='training epochs', default=100, type=int)
     parser.add_argument('--loss_function', help='loss function', default='mean_squared_error', type=str)
     parser.add_argument('--learning_rate', help='learning rate', default=0.00001, type=float)
     parser.add_argument('--cpu', help='CPU only operation (disable GPU)', action='store_true')
+
+    parser.add_argument('--use_gain', help='transform (rx, tx) -> rx / tx', action='store_true')
+    parser.add_argument('--use_pca', help='use PCA', action='store_true')
+    parser.add_argument('--components', help='number of PCA components', default=None, type=int)
+
     args = parser.parse_args()
 
     # Disable info messages from TensorFlow.
@@ -110,8 +183,21 @@ def main():
     with open(args.model_config, 'r') as file:
         model_config = yaml.safe_load(file)
 
+    # Compute the number of input parameters (excluding the RX HE-PPDU data tones).
+    if not args.use_pca or args.components is None:
+        if args.use_gain:
+            # L-LTF-1 gain + L-LTF-2 gain + HE-LTF gain + HE-PPDU pilot gain.
+            num_inputs = 52 + 52 + 242 + 8
+        else:
+            # RX L-LTF-1 + RX L-LTF-2 + TX L-LTF + RX HE-LTF + TX HE-LTF + RX HE-PPDU pilot + TX HE-PPDU pilot.
+            num_inputs = 64 + 64 + 64 + 256 + 256 + 8 + 8
+    else:
+        num_inputs = args.components
+
+    model_config['model']['parameters']['num_inputs'] = num_inputs
+
     model = models.MODELS[model_config['model']['name']](**model_config['model']['parameters']).build()
-    adam = tf.keras.optimizers.Adam(lr=args.learning_rate)
+    adam = tf.keras.optimizers.Adam(learning_rate=args.learning_rate)
     model.compile(optimizer=adam, loss=args.loss_function)
 
     # Load the model weights.
@@ -119,31 +205,34 @@ def main():
         model.load_weights(args.load_checkpoint)
 
     # Create output directory.
-    mcs_strings = {
-        7: '64_QAM',
-        9: '256_QAM',
-        11: '1024_QAM'
-    }
-
-    mcs_string = mcs_strings[args.mcs]
-
-    output_dir = f'output/{mcs_string}/{model_config["model"]["name"]}/{datetime.now().strftime("%Y-%m-%d/%H-%M-%S")}'
+    output_dir = f'output/{model_config["model"]["name"]}/{datetime.now().strftime("%Y-%m-%d/%H-%M-%S")}'
     output_dir = args.output_dir or output_dir
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     # Load dataset.
     num_pred_tones = model_config['model']['parameters']['num_pred_tones']
-    tone_start = (args.tone_cluster - 1) * num_pred_tones
-    tone_end = tone_start + num_pred_tones
+    tone_start = model_config['model']['parameters']['tone_start']
+    tone_stop = tone_start + num_pred_tones
 
-    datasets = [
-        load_dataset(path, tone_start, tone_end, args.batch_size, args.shuffle_buffer_size) for path in args.train
-    ]
+    dataset_args = {
+        'tone_start': tone_start,
+        'tone_stop': tone_stop,
+        'batch_size': args.batch_size,
+        'shuffle_buffer_size': args.shuffle_buffer_size,
+        'use_gain': args.use_gain,
+        'use_pca': args.use_pca,
+        'use_combined': model_config['model']['name'] != 'ConvolutionalModel',
+        'components': args.components
+    }
+
+    training_dataset = load_dataset(args.train, **dataset_args)
+    validation_dataset = load_dataset(args.validate, **dataset_args)
 
     # Training.
     result = model.fit(
-        x=datasets[0],
+        x=training_dataset,
+        validation_data=validation_dataset,
         shuffle=False,
         epochs=args.epochs,
         callbacks=[
