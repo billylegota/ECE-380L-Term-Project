@@ -2,6 +2,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io
+import scipy.stats
 
 import complex_pca
 
@@ -67,9 +68,9 @@ def load_and_transform_data(data_path: str, constant_features_path: str = None) 
     ])
 
 
+# Look at Optuna library for hyperparameter tuning.
 def main() -> None:
-    use_real_data = False
-    data_path = 'flat_train_real_data_42dB.h5' if use_real_data else 'test_indoor_45dB_flat.h5'
+    data_path = 'train_indoor_channel_f_flat.h5'
     constant_features_path = '../data_preprocessing/constant_features.mat'
 
     data = h5py.File(data_path, 'r')
@@ -78,6 +79,19 @@ def main() -> None:
 
     # Number of data points to use.
     n = 1000
+
+    # Data and pilot extraction.
+    data_indices = constant_features['iMDataTone_HePpdu'][()].astype(np.int32) - 1
+    pilot_indices = constant_features['iMPilotTone_HePpdu'][()].astype(np.int32) - 1
+    data_size = 256
+
+    rx_pilot = np.array(data['rx_pilot'][0:n - 1, :])
+    tx_pilot = np.array(data['tx_pilot'][0:n - 1, :])
+    pilot_gain = rx_pilot / tx_pilot
+
+    rx_data = np.array(data['rx_data'][0:n - 1, :])
+    tx_data = np.array(data['tx_data'][0:n - 1, :])
+    data_gain = rx_data / tx_data
 
     # L-LTF extraction.
     l_ltf_size = 64
@@ -113,6 +127,10 @@ def main() -> None:
     he_ltf_trimmed_gain = rx_he_ltf_trimmed / tx_he_ltf_trimmed
 
     # Frequency domain.
+    f = np.linspace(0, 1, data_size)
+    f_data = f[data_indices]
+    f_pilot = f[pilot_indices]
+
     f_rx_he_ltf = np.linspace(0, 1, he_ltf_size)
     f_rx_he_ltf_trimmed = f_rx_he_ltf[tx_he_ltf != 0]
 
@@ -120,7 +138,7 @@ def main() -> None:
     f_l_ltf_trimmed = f_l_ltf[tx_l_ltf != 0]
 
     # Channel instance to use.
-    i = 1
+    i = 0
 
     # Make plots.
     plot_constellation = False
@@ -128,16 +146,18 @@ def main() -> None:
     plot_phase = True
     plot_pca = False
     plot_mean_magnitude = False
+    plot_correction_phase = True
 
     if plot_constellation:
         plt.figure()
         plt.scatter(np.real(he_ltf_trimmed_gain[i, :]), np.imag(he_ltf_trimmed_gain[i, :]))
         plt.scatter(np.real(l_ltf_1_trimmed_gain[i, :]), np.imag(l_ltf_1_trimmed_gain[i, :]))
         plt.scatter(np.real(l_ltf_2_trimmed_gain[i, :]), np.imag(l_ltf_2_trimmed_gain[i, :]))
+        plt.scatter(np.real(pilot_gain[i, :]), np.imag(pilot_gain[i, :]))
         plt.xlabel('In-phase Component')
         plt.ylabel('Quadrature Component')
         plt.title('Channel Gain Constellation')
-        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2'])
+        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot'])
         plt.grid()
 
     if plot_magnitude:
@@ -145,21 +165,32 @@ def main() -> None:
         plt.scatter(f_rx_he_ltf_trimmed, 20 * np.log10(np.abs(he_ltf_trimmed_gain[i, :])))
         plt.scatter(f_l_ltf_trimmed, 20 * np.log10(np.abs(l_ltf_1_trimmed_gain[i, :])))
         plt.scatter(f_l_ltf_trimmed, 20 * np.log10(np.abs(l_ltf_2_trimmed_gain[i, :])))
+        plt.scatter(f_pilot, 20 * np.log10(np.abs(pilot_gain[i, :])))
         plt.xlabel(r'$f$ (normalized)')
         plt.ylabel(r'$|H|^2$ (dB)')
         plt.title('Channel Gain')
-        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2'])
+        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot'])
         plt.grid()
 
     if plot_phase:
         plt.figure()
-        plt.scatter(f_rx_he_ltf_trimmed, np.unwrap(np.angle(he_ltf_trimmed_gain[i, :])) / np.pi)
-        plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_1_trimmed_gain[i, :])) / np.pi)
-        plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_2_trimmed_gain[i, :])) / np.pi)
+        unwrap = False
+        if unwrap:
+            plt.scatter(f_rx_he_ltf_trimmed, np.unwrap(np.angle(he_ltf_trimmed_gain[i, :])) / np.pi)
+            plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_1_trimmed_gain[i, :])) / np.pi)
+            plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_2_trimmed_gain[i, :])) / np.pi)
+            plt.scatter(f_pilot, np.unwrap(np.angle(pilot_gain[i, :])) / np.pi)
+            plt.scatter(f_data, np.unwrap(np.angle(data_gain[i, :])) / np.pi)
+        else:
+            plt.scatter(f_rx_he_ltf_trimmed, np.angle(he_ltf_trimmed_gain[i, :]) / np.pi)
+            plt.scatter(f_l_ltf_trimmed, np.angle(l_ltf_1_trimmed_gain[i, :]) / np.pi)
+            plt.scatter(f_l_ltf_trimmed, np.angle(l_ltf_2_trimmed_gain[i, :]) / np.pi)
+            plt.scatter(f_pilot, np.angle(pilot_gain[i, :]) / np.pi)
+            plt.scatter(f_data, np.angle(data_gain[i, :]) / np.pi)
         plt.xlabel(r'$f$ (normalized)')
-        plt.ylabel(r'$\angle H$ ($\times \pi$)')
+        plt.ylabel(r'$\angle H$ ($\times \pi^{-1}$)')
         plt.title('Channel Phase')
-        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2'])
+        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot', 'Data'])
         plt.grid()
 
     if plot_pca:
@@ -169,11 +200,14 @@ def main() -> None:
         plot_pca_variance_curve(rx_l_ltf_1, 'L-LTF-1 Raw')
         plot_pca_variance_curve(l_ltf_2_trimmed_gain, 'L-LTF-2 Trimmed Gain')
         plot_pca_variance_curve(rx_l_ltf_2, 'L-LTF-2 Raw')
-        plot_pca_variance_curve(np.hstack([  # TODO: integrate this.
+        plot_pca_variance_curve(rx_pilot, 'Pilot Raw')
+        plot_pca_variance_curve(pilot_gain, 'Pilot Gain')
+        plot_pca_variance_curve(np.hstack([
             he_ltf_trimmed_gain,
             l_ltf_1_trimmed_gain,
-            l_ltf_2_trimmed_gain
-        ]), 'All data')
+            l_ltf_2_trimmed_gain,
+            pilot_gain
+        ]), 'HE-LTF, L-LTF-1, L-LTF-2, and Pilot Trimmed Gain')
 
     if plot_mean_magnitude:
         plt.figure()
@@ -186,6 +220,45 @@ def main() -> None:
         plt.ylabel(r'$|H|^2$ (dB)')
         plt.title('Mean Channel Gain')
         plt.legend([r'$\mu$', r'$\pm\sigma$'])
+        plt.grid()
+
+    if plot_correction_phase:
+        index = np.arange(0, he_ltf_size)[tx_he_ltf != 0]
+        phase = np.angle(he_ltf_trimmed_gain[0, :])
+        consecutive_phase = np.split(phase, np.where(np.diff(index) != 1)[0] + 1)
+        consecutive_index = np.split(index, np.where(np.diff(index) != 1)[0] + 1)
+        consecutive_phase = [np.unwrap(x) for x in consecutive_phase]
+        consecutive_fits = [scipy.stats.linregress(x, y) for x, y in zip(consecutive_index, consecutive_phase)]
+
+        combined_phase = []
+        for x, y in zip(consecutive_index, consecutive_phase):
+            y_hat = x * consecutive_fits[0].slope + consecutive_fits[0].intercept
+            # We can add this offset WLoG because phase is 2π periodic.
+            offset = 2 * np.pi * np.round((y_hat - y) / (2 * np.pi))
+            combined_phase.append(y + offset)
+
+        combined_phase = np.hstack(combined_phase)
+
+        plt.figure()
+        for x, y in zip(consecutive_index, consecutive_phase):
+            plt.scatter(x, y / np.pi)
+
+        for fit in consecutive_fits:
+            x = np.linspace(0, he_ltf_size, 1000)
+            y = fit.slope * x + fit.intercept
+            plt.plot(x, y / np.pi)
+
+        plt.xlabel('Subcarrier Index')
+        plt.ylabel(r'$\angle H$ ($\times \pi^{-1}$)')
+        plt.title('HE-LTF Channel Phase Estimates')
+        plt.legend([f'Interval {i + 1}' for i in range(len(consecutive_index))])
+        plt.grid()
+
+        plt.figure()
+        plt.scatter(index, combined_phase / np.pi)
+        plt.xlabel('Subcarrier Index')
+        plt.ylabel(r'$\angle H$ ($\times \pi^{-1}$)')
+        plt.title('HE-LTF Channel Phase Combined Estimate')
         plt.grid()
 
     plt.show()
