@@ -20,7 +20,8 @@ def plot_pca_variance_curve(x: np.ndarray, title: str = 'PCA -- Variance Explain
 
 
 # noinspection DuplicatedCode
-def load_and_transform_data(data_path: str, constant_features_path: str = None) -> np.ndarray:
+def load_and_transform_data(data_path: str, constant_features_path: str = None, use_gain: bool = True,
+                            use_pca: bool = False, components: int = None) -> (np.ndarray, np.ndarray):
     if constant_features_path is None:
         constant_features_path = '../data_preprocessing/constant_features.mat'
 
@@ -60,15 +61,47 @@ def load_and_transform_data(data_path: str, constant_features_path: str = None) 
 
     he_ltf_trimmed_gain = rx_he_ltf_trimmed / tx_he_ltf_trimmed
 
+    # Data and pilot extraction.
+    rx_he_ppdu_pilot = np.array(data['rx_pilot'])
+    tx_he_ppdu_pilot = np.array(data['tx_pilot'])
+    he_ppdu_pilot_gain = rx_he_ppdu_pilot / tx_he_ppdu_pilot
+
+    rx_he_ppdu_data = np.array(data['rx_data'])
+    tx_he_ppdu_data = np.array(data['tx_data'])
+
     # Combine data.
-    return np.hstack([
-        he_ltf_trimmed_gain,
-        l_ltf_1_trimmed_gain,
-        l_ltf_2_trimmed_gain
-    ])
+    if use_gain:
+        X = np.hstack([
+            l_ltf_1_trimmed_gain,
+            l_ltf_2_trimmed_gain,
+            he_ltf_trimmed_gain,
+            he_ppdu_pilot_gain,
+            rx_he_ppdu_data
+        ])
+    else:
+        X = np.hstack([
+            rx_l_ltf_1,
+            rx_l_ltf_2,
+            rx_he_ltf,
+            tx_he_ltf,
+            rx_he_ppdu_pilot,
+            tx_he_ppdu_pilot,
+            rx_he_ppdu_data
+        ])
+
+    if use_pca:
+        components = X.shape[1] if components is None else components
+        pca = complex_pca.ComplexPCA(components)
+        pca.fit(X)
+
+        X = pca.transform(X)
+
+    y = tx_he_ppdu_data
+
+    return X, y
 
 
-# Look at Optuna library for hyperparameter tuning.
+# noinspection DuplicatedCode
 def main() -> None:
     data_path = 'train_indoor_channel_f_flat.h5'
     constant_features_path = '../data_preprocessing/constant_features.mat'
