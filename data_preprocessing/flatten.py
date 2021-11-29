@@ -11,7 +11,7 @@ import scipy.io
 
 
 def flatten(source: str, dest: str, packets_per_chunk: int = 1000, synthetic: bool = False,
-            silent: bool = True, constant_features_path: str = 'dataset/constant_features.mat') -> (int, int):
+            silent: bool = True, constant_features_path: str = 'constant_features.mat') -> (int, int):
     """Flatten an HDF5 dataset.
     :param source: path to original dataset.
     :param dest: path to store flattened dataset.
@@ -125,7 +125,7 @@ def flatten(source: str, dest: str, packets_per_chunk: int = 1000, synthetic: bo
 
 def flatten_dir(source_dir: str, dest_dir: str, packets_per_chunk: int = 1000, synthetic: bool = False,
                 silent: bool = True, force: bool = False,
-                constant_features_path: str = 'dataset/constant_features.mat') -> (int, int):
+                constant_features_path: str = 'constant_features.mat') -> (int, int):
     """Flatten all HDF5 files in a directory and place them in another.
     :param source_dir: source directory.
     :param dest_dir: destination directory.
@@ -172,21 +172,12 @@ def main():
 
     # noinspection PyTypeChecker
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('source', help='file to flatten', type=str)
-    parser.add_argument('dest', help='file to store result', type=str)
+    parser.add_argument('source', help='directory to flatten', type=str)
+    parser.add_argument('dest', help='directory to store result', type=str)
     parser.add_argument('--synthetic', help='flag the source dataset as being synthetic', action='store_true')
-    # args = parser.parse_args()
+    args = parser.parse_args()
 
-    # flatten(args.source, args.dest, synthetic=args.synthetic)
-    for source in [r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_10dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_15dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_20dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_25dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_30dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_35dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_40dB',
-                   r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_45dB']:
-        flatten_dir(source, source, synthetic=True, silent=False)
+    flatten_dir(args.source, args.dest, synthetic=args.synthetic, silent=False)
 
 
 if __name__ == '__main__':
