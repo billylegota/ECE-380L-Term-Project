@@ -1,0 +1,1 @@
+--train "D:\EE 364D\dataset\synthetic_data\channel_specific\train_indoor\subsampled\10_percent\train_indoor_channel_e_flat_3.h5" --model_config "config\dense_model.yaml" --output_dir "output\dense_model_gain" --epochs 20 --use_gain

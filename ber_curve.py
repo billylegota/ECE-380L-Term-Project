@@ -1,46 +1,115 @@
 """ber_curve.py -- Plot BER curve for a model.
 """
 
+import os
+import pickle
+
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow as tf
 import yaml
 
 import models
 import qam_decode
+import train
+import util
 
 
-def calculate_ber(model: tf.keras.Model, tone_start: int, tone_end: int, path: str):
-    data = h5py.File(path, 'r')
+def compute_ber(model_dir: str, data_fmt: str) -> dict:
+    # Use cached value if possible.
+    result_path = f'{model_dir}/ber.pkl'
+    if os.path.exists(result_path):
+        with open(result_path, 'rb') as file:
+            result = pickle.load(file)
+        return result
 
-    x = [
-        np.array(data['l_ltf_1_gain']),
-        np.array(data['l_ltf_2_gain']),
-        np.array(data['he_ltf_gain']),
-        np.array(data['he_ppdu_pilot_gain']),
-        np.array(data['rx_he_ppdu_data'][:, tone_start:tone_end]),
-    ]
+    # Load the model.
+    arguments_path = f'{model_dir}/arguments.pkl'
+    with open(arguments_path, 'rb') as file:
+        args = pickle.load(file)
 
-    y = np.array(data['tx_he_ppdu_data'][:, tone_start:tone_end])
-    y_hat = model.predict(x)
-
-    bits = qam_decode.decode(y, 7)
-    bits_hat = qam_decode.decode(y_hat, 7)
-
-    return np.mean(bits_hat != bits)
-
-
-if __name__ == '__main__':
-    config_path = 'config/dense_model.yaml'
-    weights_path = r'C:\Users\billy\PycharmProjects\ECE 380L Term Project' \
-                   r'\output\64_QAM\DenseModel\2021-11-28\20-26-46\weights.h5'
-    data_path = 'data_exploration/test_indoor_45dB_flat_engineered.h5'
-
+    config_path = args.model_config
     with open(config_path, 'r') as file:
         model_config = yaml.safe_load(file)
 
+    # Compute the number of input parameters (excluding the RX HE-PPDU data tones).
+    if not args.use_pca or args.components is None:
+        if args.use_gain:
+            # L-LTF-1 gain + L-LTF-2 gain + HE-LTF gain + HE-PPDU pilot gain.
+            num_inputs = 52 + 52 + 242 + 8
+        else:
+            # RX L-LTF-1 + RX L-LTF-2 + TX L-LTF + RX HE-LTF + TX HE-LTF + RX HE-PPDU pilot + TX HE-PPDU pilot.
+            num_inputs = 64 + 64 + 64 + 256 + 256 + 8 + 8
+    else:
+        num_inputs = args.components
+
+    model_config['model']['parameters']['num_inputs'] = num_inputs
+
     model = models.MODELS[model_config['model']['name']](**model_config['model']['parameters']).build()
+
+    weights_path = f'{model_dir}/weights.h5'
     model.load_weights(weights_path)
 
-    ber = calculate_ber(model, 0, 18, data_path)
-    print(ber)
+    # Compute the BER for each SNR.
+    num_pred_tones = model_config['model']['parameters']['num_pred_tones']
+    tone_start = model_config['model']['parameters']['tone_start']
+    tone_stop = tone_start + num_pred_tones
+
+    data_args = {
+        'tone_start': tone_start,
+        'tone_stop': tone_stop,
+        'use_gain': args.use_gain,
+        'use_pca': args.use_pca,
+        'use_combined': model_config['model']['name'] != 'ConvolutionalModel',
+        'components': args.components
+    }
+
+    result = {'snr': [], 'ber': [], 'ber_wbb': []}
+    # for snr in [10, 15, 20, 25, 30, 35, 40, 45]:
+    for snr in [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 41]:
+        data_path = data_fmt.format(snr)
+        x, y = train.load_data(data_path, **data_args)
+        y_hat = model.predict(x)
+
+        data = h5py.File(data_path, 'r')
+        y_wbb = np.array(data['/rx_ref_data'][:, tone_start:tone_stop])
+
+        bits = qam_decode.decode(y, 7)
+        bits_hat = qam_decode.decode(y_hat, 7)
+        bits_wbb = qam_decode.decode(y_wbb, 7)
+
+        result['snr'].append(snr)
+        result['ber'].append(np.mean(bits_hat != bits))
+        result['ber_wbb'].append(np.mean(bits_wbb != bits))
+
+        print(result['snr'][-1], result['ber'][-1], result['ber_wbb'][-1])
+
+    with open(result_path, 'wb') as file:
+        pickle.dump(result, file)
+
+    return result
+
+
+def plot_ber(model_dir: str, data_fmt: str) -> None:
+    result = compute_ber(model_dir, data_fmt)
+
+    plt.figure()
+    plt.plot(result['snr'], result['ber'])
+    plt.plot(result['snr'], result['ber_wbb'])
+    plt.xlabel('SNR [dB]')
+    plt.ylabel('BER')
+    plt.yscale('log')
+    plt.title('BER Curve')
+    plt.legend(['DNN', 'WBB'])
+    plt.grid()
+    plt.show()
+
+
+if __name__ == '__main__':
+    util.disable_gpu()
+
+    plot_ber(
+        model_dir='output/dense_model_gain',
+        # data_fmt=r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_{0}dB\test_indoor_{0}dB_channel_e_flat.h5'
+        data_fmt=r'D:\ECE 380L\dataset\real_world\flat\test_real_data_{0}dB_flat.h5'
+    )

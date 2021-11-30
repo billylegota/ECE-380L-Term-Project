@@ -20,21 +20,19 @@ import util
 
 
 # noinspection DuplicatedCode
-def load_dataset(data_path: str, tone_start: int, tone_stop: int, batch_size: int, shuffle_buffer_size: int,
-                 constant_features_path: str = None, use_gain: bool = True, use_pca: bool = False,
-                 use_combined: bool = True, components: int = None) -> tf.data.Dataset:
+def load_data(data_path: str, tone_start: int, tone_stop: int, constant_features_path: str = None,
+              use_gain: bool = True, use_pca: bool = False, use_combined: bool = True,
+              components: int = None) -> (list[np.ndarray], np.ndarray):
     """Load a flattened dataset from the specified HDF5 file.
     :param data_path: path to the flattened dataset.
     :param tone_start: start index of tones.
     :param tone_stop: stop index of tones.
-    :param batch_size: batch size.
-    :param shuffle_buffer_size: shuffle buffer size.
     :param constant_features_path: path to constant features file.
     :param use_gain: transform (rx, tx) -> rx / tx.
     :param use_pca: apply PCA.
     :param use_combined: combine all inputs (other than the RX HE-PPDU data) into a single tensor.
     :param components: number of principal components to use.
-    :return: dataset with batching and shuffling already applied.
+    :return: x and y values.
     """
     if constant_features_path is None:
         constant_features_path = 'data_preprocessing/constant_features.mat'
@@ -81,7 +79,8 @@ def load_dataset(data_path: str, tone_start: int, tone_stop: int, batch_size: in
     he_ppdu_pilot_gain = rx_he_ppdu_pilot / tx_he_ppdu_pilot
 
     rx_he_ppdu_data = np.array(data['rx_data'][:, tone_start:tone_stop])
-    tx_he_ppdu_data = np.array(data['tx_data'][:, tone_start:tone_stop])
+    # tx_he_ppdu_data = np.array(data['rx_ref_data'][:, tone_start:tone_stop])
+    tx_he_ppdu_data = np.array(data['tx_data'][:, tone_start:tone_stop])    # TODO: Make this configurable.
 
     # Combine data.
     if use_combined:
@@ -110,36 +109,31 @@ def load_dataset(data_path: str, tone_start: int, tone_stop: int, batch_size: in
 
             X = pca.transform(X)
 
-        inputs = tf.data.Dataset.zip((
-            tf.data.Dataset.from_tensor_slices((X,)),
-            tf.data.Dataset.from_tensor_slices((rx_he_ppdu_data,))
-        ))
+        x = [X, rx_he_ppdu_data]
     else:
         if use_gain:
-            inputs = tf.data.Dataset.zip((
-                tf.data.Dataset.from_tensor_slices((l_ltf_1_trimmed_gain,)),
-                tf.data.Dataset.from_tensor_slices((l_ltf_2_trimmed_gain,)),
-                tf.data.Dataset.from_tensor_slices((he_ltf_trimmed_gain,)),
-                tf.data.Dataset.from_tensor_slices((he_ppdu_pilot_gain,))
-            ))
+            x = [
+                l_ltf_1_trimmed_gain,
+                l_ltf_2_trimmed_gain,
+                he_ltf_trimmed_gain,
+                he_ppdu_pilot_gain,
+                rx_he_ppdu_data
+            ]
         else:
-            inputs = tf.data.Dataset.zip((
-                tf.data.Dataset.from_tensor_slices((rx_l_ltf_1,)),
-                tf.data.Dataset.from_tensor_slices((rx_l_ltf_2,)),
-                tf.data.Dataset.from_tensor_slices((tx_l_ltf,)),
-                tf.data.Dataset.from_tensor_slices((rx_he_ltf,)),
-                tf.data.Dataset.from_tensor_slices((tx_he_ltf,)),
-                tf.data.Dataset.from_tensor_slices((rx_he_ppdu_pilot,)),
-                tf.data.Dataset.from_tensor_slices((tx_he_ppdu_pilot,))
-            ))
+            x = [
+                rx_l_ltf_1,
+                rx_l_ltf_2,
+                tx_l_ltf,
+                rx_he_ltf,
+                tx_he_ltf,
+                rx_he_ppdu_pilot,
+                tx_he_ppdu_pilot,
+                rx_he_ppdu_data
+            ]
 
-    outputs = tf.data.Dataset.from_tensor_slices((tx_he_ppdu_data,))
+    y = tx_he_ppdu_data
 
-    dataset = tf.data.Dataset.zip((inputs, outputs)) \
-        .shuffle(buffer_size=shuffle_buffer_size) \
-        .batch(batch_size=batch_size)
-
-    return dataset
+    return x, y
 
 
 def main():
@@ -153,8 +147,7 @@ def main():
     parser.add_argument('--load_checkpoint', help='load weights from checkpoint file', default=None, type=str)
 
     parser.add_argument('--train', help='training dataset', default='default.h5', type=str)
-    parser.add_argument('--validate', help='validation dataset', default='default.h5', type=str)
-    parser.add_argument('--batch_size', help='batch size', default=1000, type=int)
+    parser.add_argument('--batch_size', help='batch size', default=100, type=int)
     parser.add_argument('--shuffle_buffer_size', help='shuffle buffer size', default=10000, type=int)
     parser.add_argument('--epochs', help='training epochs', default=100, type=int)
     parser.add_argument('--loss_function', help='loss function', default='mean_squared_error', type=str)
@@ -171,7 +164,6 @@ def main():
     tf.get_logger().setLevel(logging.WARNING)
 
     # Seed the PRNG.
-    # FIXME: This (1) does not (reliably) set all the PRNG seeds and (2) is deprecated according to Numpy docs.
     np.random.seed(args.seed)
     tf.random.set_seed(args.seed)
 
@@ -215,25 +207,24 @@ def main():
     tone_start = model_config['model']['parameters']['tone_start']
     tone_stop = tone_start + num_pred_tones
 
-    dataset_args = {
+    data_args = {
         'tone_start': tone_start,
         'tone_stop': tone_stop,
-        'batch_size': args.batch_size,
-        'shuffle_buffer_size': args.shuffle_buffer_size,
         'use_gain': args.use_gain,
         'use_pca': args.use_pca,
         'use_combined': model_config['model']['name'] != 'ConvolutionalModel',
         'components': args.components
     }
 
-    training_dataset = load_dataset(args.train, **dataset_args)
-    validation_dataset = load_dataset(args.validate, **dataset_args)
+    x_train, y_train = load_data(args.train, **data_args)
 
     # Training.
     result = model.fit(
-        x=training_dataset,
-        validation_data=validation_dataset,
-        shuffle=False,
+        x=x_train,
+        y=y_train,
+        validation_split=0.2,
+        batch_size=args.batch_size,
+        shuffle=True,
         epochs=args.epochs,
         callbacks=[
             tf.keras.callbacks.ModelCheckpoint(
@@ -249,7 +240,7 @@ def main():
     # Save arguments.
     path = f'{output_dir}/arguments.pkl'
     with open(path, 'wb') as file:
-        pickle.dump(vars(args), file)
+        pickle.dump(args, file)
 
     # Save model.
     path = f'{output_dir}/model.json'

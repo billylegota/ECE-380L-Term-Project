@@ -20,90 +20,8 @@ def plot_pca_variance_curve(x: np.ndarray, title: str = 'PCA -- Variance Explain
 
 
 # noinspection DuplicatedCode
-def load_and_transform_data(data_path: str, constant_features_path: str = None, use_gain: bool = True,
-                            use_pca: bool = False, components: int = None) -> (np.ndarray, np.ndarray):
-    if constant_features_path is None:
-        constant_features_path = '../data_preprocessing/constant_features.mat'
-
-    # Load dataset and constant features.
-    data = h5py.File(data_path, 'r')
-    constant_features = scipy.io.loadmat(constant_features_path, squeeze_me=True)
-    constant_features = constant_features['constant']
-
-    # L-LTF extraction.
-    rx_l_ltf_1 = np.array(data['rx_l_ltf_1'])
-    rx_l_ltf_2 = np.array(data['rx_l_ltf_2'])
-
-    tx_l_ltf = constant_features['txLltfFftOut'][()]
-
-    rx_l_ltf_1_trimmed = rx_l_ltf_1[:, tx_l_ltf != 0]
-    rx_l_ltf_2_trimmed = rx_l_ltf_2[:, tx_l_ltf != 0]
-    tx_l_ltf_trimmed = tx_l_ltf[tx_l_ltf != 0]
-
-    l_ltf_1_trimmed_gain = rx_l_ltf_1_trimmed / tx_l_ltf_trimmed
-    l_ltf_2_trimmed_gain = rx_l_ltf_2_trimmed / tx_l_ltf_trimmed
-
-    # HE-LTF extraction.
-    he_ltf_data_indices = constant_features['iMDataTone_Heltf'][()].astype(np.int32) - 1
-    he_ltf_pilot_indices = constant_features['iMPilotTone_Heltf'][()].astype(np.int32) - 1
-    he_ltf_size = 256
-
-    rx_he_ltf_data = np.array(data['rx_he_ltf_data'])
-    rx_he_ltf_pilot = np.array(data['rx_he_ltf_pilot'])
-    rx_he_ltf = np.zeros((rx_he_ltf_data.shape[0], he_ltf_size), dtype=complex)
-    rx_he_ltf[:, he_ltf_data_indices] = rx_he_ltf_data
-    rx_he_ltf[:, he_ltf_pilot_indices] = rx_he_ltf_pilot
-
-    tx_he_ltf = constant_features['txHeltfFftOut'][()]
-
-    rx_he_ltf_trimmed = rx_he_ltf[:, tx_he_ltf != 0]
-    tx_he_ltf_trimmed = tx_he_ltf[tx_he_ltf != 0]
-
-    he_ltf_trimmed_gain = rx_he_ltf_trimmed / tx_he_ltf_trimmed
-
-    # Data and pilot extraction.
-    rx_he_ppdu_pilot = np.array(data['rx_pilot'])
-    tx_he_ppdu_pilot = np.array(data['tx_pilot'])
-    he_ppdu_pilot_gain = rx_he_ppdu_pilot / tx_he_ppdu_pilot
-
-    rx_he_ppdu_data = np.array(data['rx_data'])
-    tx_he_ppdu_data = np.array(data['tx_data'])
-
-    # Combine data.
-    if use_gain:
-        X = np.hstack([
-            l_ltf_1_trimmed_gain,
-            l_ltf_2_trimmed_gain,
-            he_ltf_trimmed_gain,
-            he_ppdu_pilot_gain,
-            rx_he_ppdu_data
-        ])
-    else:
-        X = np.hstack([
-            rx_l_ltf_1,
-            rx_l_ltf_2,
-            rx_he_ltf,
-            tx_he_ltf,
-            rx_he_ppdu_pilot,
-            tx_he_ppdu_pilot,
-            rx_he_ppdu_data
-        ])
-
-    if use_pca:
-        components = X.shape[1] if components is None else components
-        pca = complex_pca.ComplexPCA(components)
-        pca.fit(X)
-
-        X = pca.transform(X)
-
-    y = tx_he_ppdu_data
-
-    return X, y
-
-
-# noinspection DuplicatedCode
 def main() -> None:
-    data_path = 'train_indoor_channel_f_flat.h5'
+    data_path = 'test_indoor_45dB_flat.h5'
     constant_features_path = '../data_preprocessing/constant_features.mat'
 
     data = h5py.File(data_path, 'r')
@@ -111,26 +29,26 @@ def main() -> None:
     constant_features = constant_features['constant']
 
     # Number of data points to use.
-    n = 1000
+    n = -1
 
     # Data and pilot extraction.
     data_indices = constant_features['iMDataTone_HePpdu'][()].astype(np.int32) - 1
     pilot_indices = constant_features['iMPilotTone_HePpdu'][()].astype(np.int32) - 1
     data_size = 256
 
-    rx_pilot = np.array(data['rx_pilot'][0:n - 1, :])
-    tx_pilot = np.array(data['tx_pilot'][0:n - 1, :])
+    rx_pilot = np.array(data['rx_pilot'][0:n, :])
+    tx_pilot = np.array(data['tx_pilot'][0:n, :])
     pilot_gain = rx_pilot / tx_pilot
 
-    rx_data = np.array(data['rx_data'][0:n - 1, :])
-    tx_data = np.array(data['tx_data'][0:n - 1, :])
+    rx_data = np.array(data['rx_data'][0:n, :])
+    tx_data = np.array(data['tx_data'][0:n, :])
     data_gain = rx_data / tx_data
 
     # L-LTF extraction.
     l_ltf_size = 64
 
-    rx_l_ltf_1 = np.array(data['rx_l_ltf_1'][0:n - 1, :])
-    rx_l_ltf_2 = np.array(data['rx_l_ltf_2'][0:n - 1, :])
+    rx_l_ltf_1 = np.array(data['rx_l_ltf_1'][0:n, :])
+    rx_l_ltf_2 = np.array(data['rx_l_ltf_2'][0:n, :])
 
     tx_l_ltf = constant_features['txLltfFftOut'][()]
 
@@ -146,8 +64,8 @@ def main() -> None:
     he_ltf_pilot_indices = constant_features['iMPilotTone_Heltf'][()].astype(np.int32) - 1
     he_ltf_size = 256
 
-    rx_he_ltf_data = np.array(data['rx_he_ltf_data'][0:n - 1, :])
-    rx_he_ltf_pilot = np.array(data['rx_he_ltf_pilot'][0:n - 1, :])
+    rx_he_ltf_data = np.array(data['rx_he_ltf_data'][0:n, :])
+    rx_he_ltf_pilot = np.array(data['rx_he_ltf_pilot'][0:n, :])
     rx_he_ltf = np.zeros((rx_he_ltf_data.shape[0], he_ltf_size), dtype=complex)
     rx_he_ltf[:, he_ltf_data_indices] = rx_he_ltf_data
     rx_he_ltf[:, he_ltf_pilot_indices] = rx_he_ltf_pilot
@@ -174,14 +92,24 @@ def main() -> None:
     i = 0
 
     # Make plots.
-    plot_constellation = False
+    plot_constellation = True
     plot_magnitude = True
     plot_phase = True
-    plot_pca = False
-    plot_mean_magnitude = False
+    plot_pca = True
+    plot_mean_magnitude = True
     plot_correction_phase = True
 
     if plot_constellation:
+        plt.figure()
+        plt.scatter(np.real(tx_he_ltf_trimmed), np.imag(tx_he_ltf_trimmed))
+        plt.scatter(np.real(tx_l_ltf_trimmed), np.imag(tx_l_ltf_trimmed))
+        plt.scatter(np.real(tx_pilot[i, :]), np.imag(tx_pilot[i, :]))
+        plt.xlabel('In-phase Component')
+        plt.ylabel('Quadrature Component')
+        plt.title('Transmitted Symbol Constellation')
+        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot'])
+        plt.grid()
+
         plt.figure()
         plt.scatter(np.real(he_ltf_trimmed_gain[i, :]), np.imag(he_ltf_trimmed_gain[i, :]))
         plt.scatter(np.real(l_ltf_1_trimmed_gain[i, :]), np.imag(l_ltf_1_trimmed_gain[i, :]))

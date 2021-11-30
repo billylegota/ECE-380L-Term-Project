@@ -23,16 +23,25 @@ Remaining tasks:
         [x] Design fully connected model (done in TF)
         [x] Design convolutional model (done in TF)
     - Model training and hyper-parameter search
-        - Train model on real-world dataset
+        - Train model on synthetic dataset
             [ ] Fully connected without feature engineering or feature extraction
             [ ] Fully connected with feature engineering but no feature extraction
             [ ] Fully connected with feature engineering and feature extraction
             [ ] Convolutional with feature engineering
         - Do the same in the (magnitude, phase) space instead of (real, imaginary) space
+            [ ] Fully connected without feature engineering or feature extraction
+            [ ] Fully connected with feature engineering but no feature extraction
+            [ ] Fully connected with feature engineering and feature extraction
+            [ ] Convolutional with feature engineering
     - Model evaluation
-        [ ] Flatten and process the per-SNR real-world datasets for use in BER curve creation
-        [ ] Update BER curve code to generate curves with the new models
-        - Evaluate models trained on real-world dataset
+        [x] Flatten and process the per-SNR synthetic datasets for use in BER curve creation
+        [x] Update BER curve code to generate curves with the new models
+        - Evaluate models trained on synthetic dataset
+            [ ] Fully connected without feature engineering or feature extraction
+            [ ] Fully connected with feature engineering but no feature extraction
+            [ ] Fully connected with feature engineering and feature extraction
+            [ ] Convolutional with feature engineering
+        - Do the same in the (magnitude, phase) space instead of (real, imaginary) space
             [ ] Fully connected without feature engineering or feature extraction
             [ ] Fully connected with feature engineering but no feature extraction
             [ ] Fully connected with feature engineering and feature extraction
