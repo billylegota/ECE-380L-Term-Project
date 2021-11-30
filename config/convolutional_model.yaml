@@ -9,3 +9,4 @@ model:
     activation: 'tanh'
     dropout: 0
     num_pred_tones: 1
+    tone_start: 117

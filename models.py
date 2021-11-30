@@ -93,17 +93,28 @@ class ConvolutionalModel:
             name='rx_he_ppdu_data'
         )
 
-        inputs = [
-            l_ltf_1_gain,
-            l_ltf_2_gain,
-            he_ltf_gain,
-            he_ppdu_pilot_gain,
-        ]
+        l_ltf_1_gain_layers = tf.concat(values=[f(l_ltf_1_gain) for f in [tf.math.real, tf.math.imag]], axis=-1)
+        l_ltf_1_gain_layers = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(l_ltf_1_gain_layers)
+        l_ltf_1_gain_layers = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(l_ltf_1_gain_layers)
+        l_ltf_1_gain_layers = tf.keras.layers.Flatten()(l_ltf_1_gain_layers)
 
-        n = tf.concat(values=[f(x) for f in [tf.math.real, tf.math.imag] for x in inputs], axis=-1)
-        n = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(n)
-        n = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(n)
-        n = tf.keras.layers.Flatten()(n)
+        l_ltf_2_gain_layers = tf.concat(values=[f(l_ltf_2_gain) for f in [tf.math.real, tf.math.imag]], axis=-1)
+        l_ltf_2_gain_layers = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(l_ltf_2_gain_layers)
+        l_ltf_2_gain_layers = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(l_ltf_2_gain_layers)
+        l_ltf_2_gain_layers = tf.keras.layers.Flatten()(l_ltf_2_gain_layers)
+
+        he_ltf_gain_layers = tf.concat(values=[f(he_ltf_gain) for f in [tf.math.real, tf.math.imag]], axis=-1)
+        he_ltf_gain_layers = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(he_ltf_gain_layers)
+        he_ltf_gain_layers = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(he_ltf_gain_layers)
+        he_ltf_gain_layers = tf.keras.layers.Flatten()(he_ltf_gain_layers)
+
+        he_ppdu_pilot_gain_layers = tf.concat(values=[f(he_ppdu_pilot_gain) for f in [tf.math.real, tf.math.imag]], axis=-1)
+        he_ppdu_pilot_gain_layers = tf.keras.layers.Lambda(lambda x: tf.keras.backend.expand_dims(x))(he_ppdu_pilot_gain_layers)
+        he_ppdu_pilot_gain_layers = tf.keras.layers.Conv1D(filters=self._filters, kernel_size=self._kernel_size, activation='elu')(he_ppdu_pilot_gain_layers)
+        he_ppdu_pilot_gain_layers = tf.keras.layers.Flatten()(he_ppdu_pilot_gain_layers)
+
+        n = tf.keras.layers.concatenate([l_ltf_1_gain_layers, l_ltf_2_gain_layers, he_ltf_gain_layers, he_ppdu_pilot_gain_layers])
+
         for i in range(self._layers):
             n = tf.keras.layers.Dense(units=self._units, activation='tanh')(n)
 
