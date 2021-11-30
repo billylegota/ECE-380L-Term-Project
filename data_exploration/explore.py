@@ -21,7 +21,8 @@ def plot_pca_variance_curve(x: np.ndarray, title: str = 'PCA -- Variance Explain
 
 # noinspection DuplicatedCode
 def main() -> None:
-    data_path = 'test_indoor_45dB_flat.h5'
+    # data_path = r'D:\EE 364D\dataset\synthetic_data\channel_specific\train_indoor\subsampled\10_percent\train_indoor_channel_e_flat_3.h5'
+    data_path = r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_20dB\test_indoor_20dB_channel_e_flat.h5'
     constant_features_path = '../data_preprocessing/constant_features.mat'
 
     data = h5py.File(data_path, 'r')
@@ -29,7 +30,7 @@ def main() -> None:
     constant_features = constant_features['constant']
 
     # Number of data points to use.
-    n = -1
+    n = 1
 
     # Data and pilot extraction.
     data_indices = constant_features['iMDataTone_HePpdu'][()].astype(np.int32) - 1
@@ -92,12 +93,12 @@ def main() -> None:
     i = 0
 
     # Make plots.
-    plot_constellation = True
+    plot_constellation = False
     plot_magnitude = True
     plot_phase = True
-    plot_pca = True
-    plot_mean_magnitude = True
-    plot_correction_phase = True
+    plot_pca = False
+    plot_mean_magnitude = False
+    plot_correction_phase = False
 
     if plot_constellation:
         plt.figure()
@@ -117,7 +118,7 @@ def main() -> None:
         plt.scatter(np.real(pilot_gain[i, :]), np.imag(pilot_gain[i, :]))
         plt.xlabel('In-phase Component')
         plt.ylabel('Quadrature Component')
-        plt.title('Channel Gain Constellation')
+        plt.title('Channel Gain Estimate Constellation')
         plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot'])
         plt.grid()
 
@@ -127,10 +128,11 @@ def main() -> None:
         plt.scatter(f_l_ltf_trimmed, 20 * np.log10(np.abs(l_ltf_1_trimmed_gain[i, :])))
         plt.scatter(f_l_ltf_trimmed, 20 * np.log10(np.abs(l_ltf_2_trimmed_gain[i, :])))
         plt.scatter(f_pilot, 20 * np.log10(np.abs(pilot_gain[i, :])))
+        plt.scatter(f_data, 20 * np.log10(np.abs(data_gain[i, :])), marker='x')
         plt.xlabel(r'$f$ (normalized)')
         plt.ylabel(r'$|H|^2$ (dB)')
-        plt.title('Channel Gain')
-        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot'])
+        plt.title('Channel Gain Estimate')
+        plt.legend(['HE-LTF', 'L-LTF-1', 'L-LTF-2', 'Pilot', 'Data'])
         plt.grid()
 
     if plot_phase:
@@ -141,13 +143,13 @@ def main() -> None:
             plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_1_trimmed_gain[i, :])) / np.pi)
             plt.scatter(f_l_ltf_trimmed, np.unwrap(np.angle(l_ltf_2_trimmed_gain[i, :])) / np.pi)
             plt.scatter(f_pilot, np.unwrap(np.angle(pilot_gain[i, :])) / np.pi)
-            plt.scatter(f_data, np.unwrap(np.angle(data_gain[i, :])) / np.pi)
+            plt.scatter(f_data, np.unwrap(np.angle(data_gain[i, :])) / np.pi, marker='x')
         else:
             plt.scatter(f_rx_he_ltf_trimmed, np.angle(he_ltf_trimmed_gain[i, :]) / np.pi)
             plt.scatter(f_l_ltf_trimmed, np.angle(l_ltf_1_trimmed_gain[i, :]) / np.pi)
             plt.scatter(f_l_ltf_trimmed, np.angle(l_ltf_2_trimmed_gain[i, :]) / np.pi)
             plt.scatter(f_pilot, np.angle(pilot_gain[i, :]) / np.pi)
-            plt.scatter(f_data, np.angle(data_gain[i, :]) / np.pi)
+            plt.scatter(f_data, np.angle(data_gain[i, :]) / np.pi, marker='x')
         plt.xlabel(r'$f$ (normalized)')
         plt.ylabel(r'$\angle H$ ($\times \pi^{-1}$)')
         plt.title('Channel Phase')

@@ -96,17 +96,20 @@ def compute_ber(model_dir: str, data_fmt: str) -> dict:
     return result
 
 
-def plot_ber(model_dirs: list[str], data_fmt: str) -> None:
+def plot_ber(model_dirs: list[str], names: list[str], data_fmt: str) -> None:
     results = [compute_ber(model_dir, data_fmt) for model_dir in model_dirs]
 
     plt.figure()
     for result in results:
         plt.plot(result['snr'], result['ber'])
+    plt.plot(results[0]['snr'], results[0]['ber_wbb'])
     plt.xlabel('SNR [dB]')
     plt.ylabel('BER')
+    plt.xlim([10, 25])
+    plt.ylim([1e-2, 1])
     plt.yscale('log')
     plt.title('BER Curve')
-    plt.legend(model_dirs)
+    plt.legend(names + ['Conventional LS Estimator'])
     plt.grid()
     plt.show()
 
@@ -114,11 +117,20 @@ def plot_ber(model_dirs: list[str], data_fmt: str) -> None:
 if __name__ == '__main__':
     plot_ber(
         model_dirs=[
-            # 'output/dense_model_gain',
+            'output/convolutional_model',
+            'output/dense_model_gain',
             'output/dense_model_gain_pca_10',
             'output/dense_model_gain_pca_25',
             'output/dense_model_gain_pca_50',
             'output/dense_model_gain_pca_100'
+        ],
+        names=[
+            'Convolutional Model',
+            'Dense Model',
+            'Dense Model + PCA ($k = 10$)',
+            'Dense Model + PCA ($k = 25$)',
+            'Dense Model + PCA ($k = 50$)',
+            'Dense Model + PCA ($k = 100$)'
         ],
         data_fmt=r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_{0}dB\test_indoor_{0}dB_channel_e_flat.h5'
     )
