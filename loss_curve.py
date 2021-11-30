@@ -22,5 +22,5 @@ def loss_curve(path: str) -> None:
 
 
 if __name__ == '__main__':
-    loss_curve('output/dense_model_gain/history.pkl')
+    loss_curve('output/dense_model_gain_pca_100/history.pkl')
     plt.show()

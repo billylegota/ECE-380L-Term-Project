@@ -22,7 +22,8 @@ import util
 # noinspection DuplicatedCode
 def load_data(data_path: str, tone_start: int, tone_stop: int, constant_features_path: str = None,
               use_gain: bool = True, use_pca: bool = False, use_combined: bool = True,
-              components: int = None) -> (list[np.ndarray], np.ndarray):
+              components: int = None,
+              pca: complex_pca.ComplexPCA = None) -> (list[np.ndarray], np.ndarray, complex_pca.ComplexPCA):
     """Load a flattened dataset from the specified HDF5 file.
     :param data_path: path to the flattened dataset.
     :param tone_start: start index of tones.
@@ -32,6 +33,7 @@ def load_data(data_path: str, tone_start: int, tone_stop: int, constant_features
     :param use_pca: apply PCA.
     :param use_combined: combine all inputs (other than the RX HE-PPDU data) into a single tensor.
     :param components: number of principal components to use.
+    :param pca: pre-fitted ComplexPCA instance (if one exists).
     :return: x and y values.
     """
     if constant_features_path is None:
@@ -95,19 +97,20 @@ def load_data(data_path: str, tone_start: int, tone_stop: int, constant_features
             X = np.hstack([
                 rx_l_ltf_1,
                 rx_l_ltf_2,
-                tx_l_ltf,
+                np.tile(tx_l_ltf, (rx_l_ltf_1.shape[0], 1)),
                 rx_he_ltf,
-                tx_he_ltf,
+                np.tile(tx_he_ltf, (rx_he_ltf.shape[0], 1)),
                 rx_he_ppdu_pilot,
                 tx_he_ppdu_pilot
             ])
 
         if use_pca:
             components = X.shape[1] if components is None else components
-            pca = complex_pca.ComplexPCA(components)
-            pca.fit(X)
+            if pca is None:
+                pca = complex_pca.ComplexPCA(components)
+                pca.fit(X)
 
-            X = pca.transform(X)
+            X = pca.transform(X)[:, 0:components]
 
         x = [X, rx_he_ppdu_data]
     else:
@@ -133,7 +136,7 @@ def load_data(data_path: str, tone_start: int, tone_stop: int, constant_features
 
     y = tx_he_ppdu_data
 
-    return x, y
+    return x, y, pca
 
 
 def main():
@@ -216,7 +219,11 @@ def main():
         'components': args.components
     }
 
-    x_train, y_train = load_data(args.train, **data_args)
+    x_train, y_train, pca = load_data(args.train, **data_args)
+
+    # Save PCA.
+    with open(f'{output_dir}/pca.pkl', 'wb') as file:
+        pickle.dump(pca, file)
 
     # Training.
     result = model.fit(
