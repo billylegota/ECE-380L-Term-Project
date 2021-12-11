@@ -7,8 +7,8 @@ import tensorflow as tf
 Input = tf.keras.layers.InputLayer
 
 
-USE_L1 = True
-USE_L2 = True
+USE_L1: bool = False
+USE_L2: bool = False
 
 
 # noinspection DuplicatedCode

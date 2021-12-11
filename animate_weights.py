@@ -31,7 +31,7 @@ def animate(title, images):
 
 
 def main():
-    basedir = 'output/dense_model_gain_regularized_l1_l2'
+    basedir = 'output/dense_model_gain_regularized_l1_l2_test_2'
     weights = h5py.File(f'{basedir}/weights_epoch_1.h5', 'r')
     layers = [layer for layer in weights.keys() if 'dense' in layer]
 
