@@ -122,7 +122,9 @@ if __name__ == '__main__':
             'output/dense_model_gain_pca_10',
             'output/dense_model_gain_pca_25',
             'output/dense_model_gain_pca_50',
-            'output/dense_model_gain_pca_100'
+            'output/dense_model_gain_pca_100',
+            'output/dense_model_gain_regularized_l2',
+            'output/dense_model_gain_regularized_l1_l2'
         ],
         names=[
             'Convolutional Model',
@@ -130,7 +132,9 @@ if __name__ == '__main__':
             'Dense Model + PCA ($k = 10$)',
             'Dense Model + PCA ($k = 25$)',
             'Dense Model + PCA ($k = 50$)',
-            'Dense Model + PCA ($k = 100$)'
+            'Dense Model + PCA ($k = 100$)',
+            'Dense Model + L2',
+            'Dense Model + L1/L2'
         ],
         data_fmt=r'D:\EE 364D\dataset\synthetic_data\channel_specific\test_indoor_{0}dB\test_indoor_{0}dB_channel_e_flat.h5'
     )

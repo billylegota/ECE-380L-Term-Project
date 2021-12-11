@@ -7,6 +7,10 @@ import tensorflow as tf
 Input = tf.keras.layers.InputLayer
 
 
+USE_L1 = True
+USE_L2 = True
+
+
 # noinspection DuplicatedCode
 class DenseModel:
     def __init__(self, layers: int, units: int, activation: str, dropout: float, num_inputs: int,
@@ -34,7 +38,16 @@ class DenseModel:
 
         n = tf.concat(values=[tf.math.real(inputs), tf.math.imag(inputs)], axis=-1)
         for i in range(self._layers):
-            n = tf.keras.layers.Dense(units=self._units, activation=self._activation)(n)
+            l1 = 1e-5 if i == 0 and USE_L1 else 0
+            l2 = 1e-4 if i == 0 and USE_L2 else 0
+            n = tf.keras.layers.Dense(
+                units=self._units,
+                activation=self._activation,
+                kernel_regularizer=lambda weights: tf.complex(
+                    tf.reduce_sum(l2 * tf.square(weights) + l1 * tf.abs(weights)),
+                    0.0
+                ),
+            )(n)
             n = tf.keras.layers.Dropout(rate=self._dropout)(n)
 
         real = tf.keras.layers.Dense(self._num_pred_tones)(n)
